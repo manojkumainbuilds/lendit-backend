@@ -3,61 +3,103 @@ from frappe.tests import IntegrationTestCase
 
 
 class IntegrationTestCustomer(IntegrationTestCase):
-    """Test the Customer DocType's standard validation rules."""
+    def test_customer_number_is_generated_when_missing(self):
+        customer = frappe.get_doc(
+            {
+                "doctype": "Customer",
+                "customer_name": "Generated Number Test",
+                "customer_type": "Individual",
+                "status": "Active",
+            }
+        )
+        customer.insert(ignore_permissions=True)
+
+        self.assertRegex(customer.customer_number, r"^CUS-\d{6}$")
+
+    def test_generated_customer_numbers_are_unique(self):
+        first = frappe.get_doc(
+            {
+                "doctype": "Customer",
+                "customer_name": "Generated Number Test One",
+                "customer_type": "Individual",
+                "status": "Active",
+            }
+        )
+        first.insert(ignore_permissions=True)
+
+        second = frappe.get_doc(
+            {
+                "doctype": "Customer",
+                "customer_name": "Generated Number Test Two",
+                "customer_type": "Individual",
+                "status": "Active",
+            }
+        )
+        second.insert(ignore_permissions=True)
+
+        self.assertNotEqual(first.customer_number, second.customer_number)
+
+    def test_customer_number_cannot_be_changed(self):
+        customer = frappe.get_doc(
+            {
+                "doctype": "Customer",
+                "customer_name": "Immutable Number Test",
+                "customer_type": "Individual",
+                "status": "Active",
+            }
+        )
+        customer.insert(ignore_permissions=True)
+
+        original_number = customer.customer_number
+        customer.customer_name = "Updated Immutable Number Test"
+        customer.customer_number = "CUS-999999"
+
+        with self.assertRaises(frappe.ValidationError):
+            customer.save(ignore_permissions=True)
+
+        self.assertEqual(
+            frappe.db.get_value("Customer", customer.name, "customer_number"),
+            original_number,
+        )
+
+    def test_duplicate_customer_number_is_rejected(self):
+        customer = frappe.get_doc(
+            {
+                "doctype": "Customer",
+                "customer_name": "Duplicate Number Test One",
+                "customer_type": "Individual",
+                "customer_number": "CUS-888888",
+                "status": "Active",
+            }
+        )
+        customer.insert(ignore_permissions=True)
+
+        duplicate = frappe.get_doc(
+            {
+                "doctype": "Customer",
+                "customer_name": "Duplicate Number Test Two",
+                "customer_type": "Individual",
+                "customer_number": "CUS-888888",
+                "status": "Active",
+            }
+        )
+
+        with self.assertRaises(frappe.UniqueValidationError):
+            duplicate.insert(ignore_permissions=True)
 
     def test_missing_customer_name_is_rejected(self):
         customer = frappe.get_doc(
             {
                 "doctype": "Customer",
-                "customer_number": "CUS-TEST-MISSING-NAME",
                 "customer_type": "Individual",
                 "status": "Active",
             }
         )
 
-        with self.assertRaises(frappe.exceptions.MandatoryError):
-            customer.insert(ignore_permissions=True)
-
-    def test_duplicate_customer_number_is_rejected(self):
-        existing_customer = frappe.get_doc(
-            {
-                "doctype": "Customer",
-                "customer_number": "CUS-TEST-DUPLICATE",
-                "customer_name": "Original Test Customer",
-                "customer_type": "Individual",
-                "status": "Active",
-            }
-        )
-        existing_customer.insert(ignore_permissions=True)
-
-        duplicate_customer = frappe.get_doc(
-            {
-                "doctype": "Customer",
-                "customer_number": "CUS-TEST-DUPLICATE",
-                "customer_name": "Duplicate Test Customer",
-                "customer_type": "Individual",
-                "status": "Active",
-            }
-        )
-
-        with self.assertRaises(frappe.exceptions.UniqueValidationError):
-            duplicate_customer.insert(ignore_permissions=True)
-
-    def test_missing_customer_number_is_rejected(self):
-        customer = frappe.get_doc(
-            {
-                "doctype": "Customer",
-                "customer_name": "Test Customer Without Number",
-                "customer_type": "Individual",
-                "status": "Active",
-            }
-        )
-
-        with self.assertRaises(frappe.exceptions.MandatoryError):
+        with self.assertRaises(frappe.ValidationError):
             customer.insert(ignore_permissions=True)
 
     def test_lendit_staff_cannot_delete_customer(self):
-
         staff_email = f"lendit-staff-{frappe.generate_hash(length=8)}@example.com"
 
         frappe.get_doc(
@@ -74,7 +116,7 @@ class IntegrationTestCustomer(IntegrationTestCase):
         customer = frappe.get_doc(
             {
                 "doctype": "Customer",
-                "customer_number": (f"CUS-PERM-{frappe.generate_hash(length=8)}"),
+                "customer_number": f"CUS-PERM-{frappe.generate_hash(length=8)}",
                 "customer_name": "Permission Test Customer",
                 "customer_type": "Individual",
                 "status": "Active",
@@ -84,12 +126,10 @@ class IntegrationTestCustomer(IntegrationTestCase):
         original_user = frappe.session.user
 
         try:
-
             frappe.set_user(staff_email)
 
             with self.assertRaises(frappe.PermissionError):
                 frappe.delete_doc("Customer", customer.name)
-
         finally:
             frappe.set_user(original_user)
 
@@ -112,12 +152,13 @@ class IntegrationTestCustomer(IntegrationTestCase):
         customer = frappe.get_doc(
             {
                 "doctype": "Customer",
-                "customer_number": (f"CUS-CREATE-{frappe.generate_hash(length=8)}"),
+                "customer_number": f"CUS-CREATE-{frappe.generate_hash(length=8)}",
                 "customer_name": "Create Permission Test Customer",
                 "customer_type": "Individual",
                 "status": "Active",
             }
         )
+
         original_user = frappe.session.user
 
         try:
@@ -145,7 +186,7 @@ class IntegrationTestCustomer(IntegrationTestCase):
         customer = frappe.get_doc(
             {
                 "doctype": "Customer",
-                "customer_number": (f"CUS-READ-{frappe.generate_hash(length=8)}"),
+                "customer_number": f"CUS-READ-{frappe.generate_hash(length=8)}",
                 "customer_name": "Read Permission Test Customer",
                 "customer_type": "Individual",
                 "status": "Active",
@@ -153,6 +194,7 @@ class IntegrationTestCustomer(IntegrationTestCase):
         ).insert(ignore_permissions=True)
 
         original_user = frappe.session.user
+
         try:
             frappe.set_user(staff_email)
 
@@ -161,7 +203,6 @@ class IntegrationTestCustomer(IntegrationTestCase):
                 filters={"name": customer.name},
                 fields=["name"],
             )
-
         finally:
             frappe.set_user(original_user)
 
@@ -185,7 +226,7 @@ class IntegrationTestCustomer(IntegrationTestCase):
         customer = frappe.get_doc(
             {
                 "doctype": "Customer",
-                "customer_number": (f"CUS-WRITE-{frappe.generate_hash(length=8)}"),
+                "customer_number": f"CUS-WRITE-{frappe.generate_hash(length=8)}",
                 "customer_name": "Original Customer Name",
                 "customer_type": "Individual",
                 "status": "Active",
@@ -196,10 +237,8 @@ class IntegrationTestCustomer(IntegrationTestCase):
 
         try:
             frappe.set_user(staff_email)
-
             customer.customer_name = "Updated Customer Name"
             customer.save()
-
         finally:
             frappe.set_user(original_user)
 
